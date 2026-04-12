@@ -1,15 +1,13 @@
-name: main
+name: build-portable-only
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 方便手動點擊執行
   push:
     branches:
-      - prime
+      - main # 確保這裡與你 fork 的分支名稱一致
     tags:
       - "*"
   pull_request:
-    branches:
-      - prime
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -17,215 +15,36 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  format:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Install .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
-
-      # Build the project separately to discern between build and format errors
-      - name: Build
-        run: >
-          dotnet build
-          -p:CSharpier_Bypass=true
-          --configuration Release
-
-      - name: Verify formatting
-        id: verify
-        run: >
-          dotnet build
-          -t:CSharpierFormat
-          --configuration Release
-          --no-restore
-
-      - name: Report issues
-        if: ${{ failure() && steps.verify.outcome == 'failure' }}
-        run: echo "::error title=Bad formatting::Formatting issues detected. Please build the solution locally to fix them."
-
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Install .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
-
-      - name: Run tests
-        run: >
-          dotnet test
-          -p:CSharpier_Bypass=true
-          --configuration Release
-          --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
-          --collect:"XPlat Code Coverage"
-          --
-          RunConfiguration.CollectSourceInformation=true
-          DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-  pack:
+  build:
     strategy:
       matrix:
-        rid:
-          - win-arm64
-          - win-x86
-          - win-x64
-
-    # Needs to run on Windows to create the installer
-    runs-on: windows-latest
+        # 你可以根據需求刪減架構，通常 win-x64 是目前最主流的
+        rid: [win-x64, win-x86, win-arm64]
+    
+    runs-on: ubuntu-latest
     timeout-minutes: 10
-
-    permissions:
-      actions: write
-      contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v4
 
       - name: Install .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        uses: actions/setup-dotnet@v4
 
-      - name: Publish app
+      - name: Publish Portable
+        # 這裡執行 publish，產出的檔案就是免安裝的資料夾內容
         run: >
           dotnet publish LightBulb
-          -p:Version=${{ github.ref_type == 'tag' && github.ref_name || format('999.9.9-ci-{0}', github.sha) }}
+          -p:Version=${{ github.ref_type == 'tag' && github.ref_name || 'custom-build' }}
           -p:CSharpier_Bypass=true
-          --output LightBulb/bin/publish/
+          --output ./publish/${{ matrix.rid }}
           --configuration Release
           --runtime ${{ matrix.rid }}
-          --self-contained
+          --self-contained true
 
-      - name: Create installer
-        shell: pwsh
-        env:
-          INSTALLER_APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('999.9.9-ci-{0}', github.sha) }}
-        run: |
-          choco install innosetup --no-progress
-          Copy-Item -Path LightBulb/bin/publish/ -Recurse -Destination Installer/Source/
-          & "c:\Program Files (x86)\Inno Setup 6\ISCC.exe" Installer/Installer.iss
-
-      - name: Upload app binaries (portable)
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: LightBulb.${{ matrix.rid }}
-          path: LightBulb/bin/publish/
+          name: LightBulb-Portable-${{ matrix.rid }}
+          path: ./publish/${{ matrix.rid }}
           if-no-files-found: error
-
-      - name: Upload app binaries (installer)
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: LightBulb-Installer.${{ matrix.rid }}
-          path: Installer/bin/LightBulb-Installer.exe
-          if-no-files-found: error
-
-  release:
-    if: ${{ github.ref_type == 'tag' }}
-
-    needs:
-      - format
-      - test
-      - pack
-
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    permissions:
-      contents: write
-
-    steps:
-      - name: Create release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          gh release create ${{ github.ref_name }}
-          --repo ${{ github.event.repository.full_name }}
-          --title ${{ github.ref_name }}
-          --generate-notes
-          --verify-tag
-
-  deploy:
-    needs: release
-
-    strategy:
-      matrix:
-        rid:
-          - win-arm64
-          - win-x86
-          - win-x64
-
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    permissions:
-      actions: read
-      contents: write
-
-    steps:
-      - name: Download app binaries (portable)
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: LightBulb.${{ matrix.rid }}
-          path: LightBulb/
-
-      - name: Download app binaries (installer)
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: LightBulb-Installer.${{ matrix.rid }}
-
-      - name: Create package (portable)
-        # Change into the artifacts directory to avoid including the directory itself in the zip archive
-        working-directory: LightBulb/
-        run: zip -r ../LightBulb.${{ matrix.rid }}.zip .
-
-      - name: Create package (installer)
-        run: mv LightBulb-Installer.exe LightBulb-Installer.${{ matrix.rid }}.exe
-
-      - name: Create release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          gh release upload ${{ github.ref_name }}
-          LightBulb.${{ matrix.rid }}.zip
-          LightBulb-Installer.${{ matrix.rid }}.exe
-          --repo ${{ github.event.repository.full_name }}
-
-  notify:
-    needs: deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    permissions:
-      contents: read
-
-    steps:
-      - name: Notify Discord
-        uses: tyrrrz/action-http-request@25f132e48dea89c0f6b7955398270b506e1d51cb # 1.1.4
-        with:
-          url: ${{ secrets.DISCORD_WEBHOOK }}
-          method: POST
-          headers: |
-            Content-Type: application/json; charset=UTF-8
-          body: |
-            {
-              "avatar_url": "https://raw.githubusercontent.com/${{ github.event.repository.full_name }}/${{ github.ref_name }}/favicon.png",
-              "content": "[**${{ github.event.repository.name }}**](<${{ github.event.repository.html_url }}>) v${{ github.ref_name }} has been released!"
-            }
-          retry-count: 5
