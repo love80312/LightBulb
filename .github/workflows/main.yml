@@ -1,12 +1,15 @@
 name: build-portable-x64
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 允許手動點擊執行
   push:
     branches:
-      - forme
+      - forme      # 當你推送至 forme 分支時觸發
     tags:
-      - "*"
+      - "*"        # 當你推送 Tag 時觸發
+  pull_request:
+    branches:
+      - forme
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -16,7 +19,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -24,12 +27,14 @@ jobs:
 
       - name: Install .NET
         uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x' # 如果專案較舊可改為 '6.x' 或 '7.x'
 
       - name: Publish Portable
-        # 直接指定編譯 LightBulb.sln 並輸出 LightBulb 專案
+        # 使用 1.0.0-custom 格式以符合 NuGet 版本規範
         run: >
           dotnet publish LightBulb.sln
-          -p:Version=${{ github.ref_type == 'tag' && github.ref_name || 'custom-build' }}
+          -p:Version=${{ github.ref_type == 'tag' && github.ref_name || '1.0.0-custom' }}
           -p:CSharpier_Bypass=true
           --output ./publish/win-x64
           --configuration Release
@@ -41,3 +46,4 @@ jobs:
         with:
           name: LightBulb-Portable-win-x64
           path: ./publish/win-x64
+          if-no-files-found: error
