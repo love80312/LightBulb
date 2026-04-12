@@ -34,7 +34,7 @@ jobs:
       - name: Publish Portable
         # 這裡執行 publish，產出的檔案就是免安裝的資料夾內容
         run: >
-          dotnet publish LightBulb
+          dotnet publish LightBulb/LightBulb
           -p:Version=${{ github.ref_type == 'tag' && github.ref_name || 'custom-build' }}
           -p:CSharpier_Bypass=true
           --output ./publish/${{ matrix.rid }}
