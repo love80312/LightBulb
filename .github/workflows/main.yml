@@ -7,9 +7,6 @@ on:
       - forme
     tags:
       - "*"
-  pull_request:
-    branches:
-      - forme
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -29,9 +26,9 @@ jobs:
         uses: actions/setup-dotnet@v4
 
       - name: Publish Portable
-        # 直接指向 .csproj 檔案最準確，避免路徑解析錯誤
+        # 直接指定編譯 LightBulb.sln 並輸出 LightBulb 專案
         run: >
-          dotnet publish LightBulb/LightBulb/LightBulb.csproj
+          dotnet publish LightBulb.sln
           -p:Version=${{ github.ref_type == 'tag' && github.ref_name || 'custom-build' }}
           -p:CSharpier_Bypass=true
           --output ./publish/win-x64
@@ -44,4 +41,3 @@ jobs:
         with:
           name: LightBulb-Portable-win-x64
           path: ./publish/win-x64
-          if-no-files-found: error
