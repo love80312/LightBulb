@@ -4,7 +4,7 @@ on:
   workflow_dispatch: # 方便手動點擊執行
   push:
     branches:
-      - main # 確保這裡與你 fork 的分支名稱一致
+      - forme # 確保這裡與你 fork 的分支名稱一致
     tags:
       - "*"
   pull_request:
