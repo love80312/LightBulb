@@ -45,7 +45,14 @@ public partial class LocalizationManager : ObservableObject, IDisposable
                     "deu" => GermanLocalization,
                     "fra" => FrenchLocalization,
                     "spa" => SpanishLocalization,
-                    "zho" => SimplifiedChineseLocalization,
+                    "zho" => CultureInfo.CurrentUICulture.Name switch
+                    {
+                        var n when n.StartsWith("zh-Hant")
+                                || n.StartsWith("zh-TW")
+                                || n.StartsWith("zh-HK")
+                                || n.StartsWith("zh-MO") => TraditionalChineseLocalization,
+                        _ => SimplifiedChineseLocalization,
+                    },
                     _ => EnglishLocalization,
                 },
             Language.Ukrainian => UkrainianLocalization,
@@ -53,6 +60,7 @@ public partial class LocalizationManager : ObservableObject, IDisposable
             Language.French => FrenchLocalization,
             Language.Spanish => SpanishLocalization,
             Language.SimplifiedChinese => SimplifiedChineseLocalization,
+            Language.TraditionalChinese => TraditionalChineseLocalization,
             _ => EnglishLocalization,
         };
 
