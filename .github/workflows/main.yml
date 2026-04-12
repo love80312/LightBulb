@@ -15,6 +15,9 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
+  # 在環境變數中定義忽略警告，避開 shell 分號解析問題
+  NoWarn: "NU1901;NU1902;NU1903;NU1904"
+  NuGetAudit: "false"
 
 jobs:
   build:
@@ -28,17 +31,13 @@ jobs:
       - name: Install .NET
         uses: actions/setup-dotnet@v4
         with:
-          # 強制指定 .NET 8 或 9 以確保穩定性，除非你確實想測試 .NET 10
           dotnet-version: '8.x' 
 
       - name: Publish Portable
-        # 關鍵修正：將包含分號的參數用單引號 ' ' 包起來，避免 shell 誤判
         run: >
           dotnet publish LightBulb.sln
           -p:Version=${{ github.ref_type == 'tag' && github.ref_name || '1.0.0-custom' }}
           -p:CSharpier_Bypass=true
-          -p:NuGetAudit=false
-          '-p:NoWarn=NU1901;NU1902;NU1903;NU1904'
           --output ./publish/win-x64
           --configuration Release
           --runtime win-x64
